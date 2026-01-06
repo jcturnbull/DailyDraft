@@ -23,8 +23,8 @@ from game_logic import (
 st.set_page_config(
     page_title="Daily Draft NFL Trivia",
     page_icon="🏈",
-    layout="wide",
-    initial_sidebar_state="expanded"
+    layout="centered",  # Better for mobile
+    initial_sidebar_state="collapsed"  # Sidebar hidden by default on mobile
 )
 
 # --- Session State Initialization ---
@@ -156,22 +156,92 @@ def complete_daily_challenge():
 # --- Initialize ---
 init_session_state()
 
+# --- Mobile-Friendly CSS ---
+st.markdown("""
+<style>
+    /* Make everything more compact and touch-friendly on mobile */
+    @media (max-width: 768px) {
+        /* Larger touch targets */
+        .stButton button {
+            width: 100%;
+            font-size: 16px !important;
+            padding: 0.75rem !important;
+            min-height: 48px;
+        }
+
+        /* Readable text sizes */
+        h1 {
+            font-size: 1.8rem !important;
+        }
+        h2 {
+            font-size: 1.4rem !important;
+        }
+        h3 {
+            font-size: 1.2rem !important;
+        }
+
+        /* Better form elements */
+        .stSelectbox select {
+            font-size: 16px !important;
+            min-height: 48px;
+        }
+
+        /* Radio buttons easier to tap */
+        .stRadio > label {
+            font-size: 16px !important;
+        }
+
+        /* Better spacing */
+        .element-container {
+            margin-bottom: 1rem;
+        }
+
+        /* Hide sidebar toggle on mobile to save space */
+        section[data-testid="stSidebar"] {
+            display: none;
+        }
+
+        /* Make expanders more prominent */
+        .streamlit-expanderHeader {
+            font-size: 16px !important;
+            padding: 0.75rem !important;
+        }
+    }
+
+    /* Better button styling for all screen sizes */
+    .stButton button {
+        border-radius: 8px;
+        transition: all 0.3s ease;
+    }
+
+    .stButton button:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+    }
+
+    /* Center content better */
+    .block-container {
+        padding-top: 2rem;
+        padding-bottom: 2rem;
+    }
+</style>
+""", unsafe_allow_html=True)
 
 # --- Header ---
 st.title("🏈 Daily Draft NFL Trivia")
 st.markdown("Test your NFL knowledge by guessing statistical leaders!")
 
-# --- Sidebar ---
-with st.sidebar:
-    st.header("Game Mode")
-
-    # Mode selection
+# --- Game Mode Selector (Main Area - Mobile Friendly) ---
+st.markdown("---")
+col1, col2, col3 = st.columns([1, 2, 1])
+with col2:
     current_mode = st.session_state.game_mode
     selected_mode = st.radio(
-        "Choose your challenge:",
+        "🎮 Choose Mode:",
         ("Daily Challenge", "Practice Play"),
         index=0 if current_mode == "Daily Challenge" else 1,
-        help="Daily Challenge: One game per day (UTC)\nPractice Play: Unlimited games"
+        horizontal=True,
+        help="Daily Challenge: One game per day | Practice: Unlimited games"
     )
 
     # Handle mode change
@@ -182,16 +252,16 @@ with st.sidebar:
         st.session_state.show_result_for_q_index = None
         st.rerun()
 
-    st.markdown("---")
+# --- Sidebar (Optional Features) ---
+with st.sidebar:
+    st.header("⚙️ Options")
 
     # Instructions toggle
-    if st.button("📖 Show Instructions"):
+    if st.button("📖 How to Play"):
         st.session_state.show_instructions = True
 
-    st.markdown("---")
-
-    # Refresh button (for debugging or checking new day)
-    if st.button("🔄 Refresh", help="Check for new day / refresh data"):
+    # Refresh button
+    if st.button("🔄 Refresh Game"):
         if st.session_state.game_mode == "Daily Challenge":
             check_and_update_daily_challenge()
         st.session_state.round_in_progress = False
@@ -200,13 +270,15 @@ with st.sidebar:
 
     # Stats display
     st.markdown("---")
-    st.markdown("### 📊 Stats")
+    st.markdown("### 📊 Your Stats")
     if st.session_state.game_mode == "Daily Challenge" and st.session_state.game_completed_daily:
         st.metric("Today's Score", f"{st.session_state.daily_total_score:,}")
         st.metric("Max Possible", f"{st.session_state.daily_max_score:,}")
         if st.session_state.daily_max_score > 0:
             pct = int((st.session_state.daily_total_score / st.session_state.daily_max_score) * 100)
             st.metric("Accuracy", f"{pct}%")
+    else:
+        st.caption("Complete a challenge to see stats!")
 
 
 # --- Instructions Modal ---
@@ -346,7 +418,8 @@ if st.session_state.round_in_progress:
             st.info(f"**{q_data.get('position_slot', 'N/A')} (Year: {q_data.get('year', 'N/A')})**\n\n{q_data.get('question_text', '')}")
 
             if result:
-                col1, col2 = st.columns(2)
+                # Mobile-friendly: columns stack on small screens
+                col1, col2 = st.columns([1, 1])
 
                 with col1:
                     st.markdown("### Your Answer")
@@ -363,8 +436,9 @@ if st.session_state.round_in_progress:
                     st.caption(f"{q_data.get('stat_category', 'N/A').replace('_', ' ')}: {q_data.get('correct_stat_value', 'N/A')}")
 
                 st.markdown("---")
-                st.markdown(f"## {result.get('emojis', 'N/A')}")
-                st.markdown(f"### **+{result.get('points', 0):,} points**")
+                # Larger emoji display for mobile
+                st.markdown(f"<div style='text-align: center; font-size: 2rem;'>{result.get('emojis', 'N/A')}</div>", unsafe_allow_html=True)
+                st.markdown(f"<div style='text-align: center; font-size: 1.5rem; font-weight: bold;'>+{result.get('points', 0):,} points</div>", unsafe_allow_html=True)
 
             st.markdown("---")
 
