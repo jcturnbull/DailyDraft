@@ -196,9 +196,19 @@ st.markdown("""
             margin-bottom: 1rem;
         }
 
-        /* Hide sidebar toggle on mobile to save space */
+        /* Completely hide sidebar on mobile */
         section[data-testid="stSidebar"] {
-            display: none;
+            display: none !important;
+        }
+
+        /* Hide hamburger menu button on mobile */
+        button[kind="header"] {
+            display: none !important;
+        }
+
+        /* Ensure sidebar doesn't overlay */
+        .css-1d391kg, [data-testid="stSidebarNav"] {
+            display: none !important;
         }
 
         /* Make expanders more prominent */
@@ -229,19 +239,18 @@ st.markdown("""
 
 # --- Header ---
 st.title("🏈 Daily Draft NFL Trivia")
-st.markdown("Test your NFL knowledge by guessing statistical leaders!")
+st.caption("Guess the NFL stat leaders. 5 questions. 1 game per day.")
 
-# --- Game Mode Selector (Main Area - Mobile Friendly) ---
-st.markdown("---")
-col1, col2, col3 = st.columns([1, 2, 1])
-with col2:
+# --- Sidebar (Game Mode & Options) ---
+with st.sidebar:
+    st.header("Game Mode")
+
+    # Mode selection
     current_mode = st.session_state.game_mode
     selected_mode = st.radio(
-        "🎮 Choose Mode:",
+        "Choose your challenge:",
         ("Daily Challenge", "Practice Play"),
-        index=0 if current_mode == "Daily Challenge" else 1,
-        horizontal=True,
-        help="Daily Challenge: One game per day | Practice: Unlimited games"
+        index=0 if current_mode == "Daily Challenge" else 1
     )
 
     # Handle mode change
@@ -252,71 +261,36 @@ with col2:
         st.session_state.show_result_for_q_index = None
         st.rerun()
 
-# --- Sidebar (Optional Features) ---
-with st.sidebar:
-    st.header("⚙️ Options")
+    st.markdown("---")
 
-    # Instructions toggle
-    if st.button("📖 How to Play"):
-        st.session_state.show_instructions = True
+    # Instructions in sidebar
+    with st.expander("📖 How to Play"):
+        st.markdown("""
+        **5 Questions. Guess the NFL stat leaders.**
 
-    # Refresh button
-    if st.button("🔄 Refresh Game"):
-        if st.session_state.game_mode == "Daily Challenge":
-            check_and_update_daily_challenge()
-        st.session_state.round_in_progress = False
-        st.session_state.current_questions = []
-        st.rerun()
+        **Scoring:**
+        - 🟩🟩🟩🟩🟩 Perfect (10,000 pts)
+        - 🟩🟩🟩🟩🟨 80-99%
+        - 🟩🟩🟩🟨⬛ 60-79%
+        - 🟩🟩🟨⬛⬛ 40-59%
+        - 🟩🟨⬛⬛⬛ 20-39%
+        - 🟨⬛⬛⬛⬛ 1-19%
+        - ⬛⬛⬛⬛⬛ 0%
+
+        **Daily Challenge:** One game per day, same for everyone!
+
+        **Practice:** Unlimited random games.
+        """)
 
     # Stats display
     st.markdown("---")
-    st.markdown("### 📊 Your Stats")
+    st.markdown("### 📊 Stats")
     if st.session_state.game_mode == "Daily Challenge" and st.session_state.game_completed_daily:
         st.metric("Today's Score", f"{st.session_state.daily_total_score:,}")
         st.metric("Max Possible", f"{st.session_state.daily_max_score:,}")
         if st.session_state.daily_max_score > 0:
             pct = int((st.session_state.daily_total_score / st.session_state.daily_max_score) * 100)
             st.metric("Accuracy", f"{pct}%")
-    else:
-        st.caption("Complete a challenge to see stats!")
-
-
-# --- Instructions Modal ---
-if st.session_state.show_instructions:
-    with st.expander("📖 How to Play", expanded=True):
-        st.markdown("""
-        ### Welcome to Daily Draft NFL Trivia!
-
-        **How it works:**
-        1. You'll be asked 5 questions about NFL statistical leaders
-        2. Each question asks: "Who had the most [stat] in [year] for [position]s?"
-        3. Select your guess from the dropdown of eligible players
-        4. Earn points based on how close your guess is to the correct answer
-
-        **Scoring:**
-        - 🟩🟩🟩🟩🟩 **10,000 points** - Perfect match!
-        - 🟩🟩🟩🟩🟨 **8,000-9,999 points** - 80-99% of leader's stat
-        - 🟩🟩🟩🟨⬛ **6,000-7,999 points** - 60-79% of leader's stat
-        - 🟩🟩🟨⬛⬛ **4,000-5,999 points** - 40-59% of leader's stat
-        - 🟩🟨⬛⬛⬛ **2,000-3,999 points** - 20-39% of leader's stat
-        - 🟨⬛⬛⬛⬛ **1-1,999 points** - 1-19% of leader's stat
-        - ⬛⬛⬛⬛⬛ **0 points** - No stat value or 0%
-
-        **Game Modes:**
-        - **Daily Challenge**: One game per day (resets at UTC midnight) - same for everyone!
-        - **Practice Play**: Unlimited random games for practice
-
-        **Tips:**
-        - The dropdown only shows players who were active that year
-        - Stats include passing, rushing, receiving categories
-        - Years range from 1999 to the most recent complete season
-
-        Good luck! 🏈
-        """)
-
-        if st.button("Got it! Let's play"):
-            st.session_state.show_instructions = False
-            st.rerun()
 
 
 # --- Main Game Area ---
@@ -344,27 +318,22 @@ if st.session_state.game_mode == "Daily Challenge":
         st.caption(f"⏰ Next challenge in: {int(hours):02d}h {int(minutes):02d}m")
 
     elif not st.session_state.round_in_progress:
-        # Show start button
-        st.subheader(f"📅 Daily Challenge: {current_date_str}")
-        st.markdown("Ready to test your NFL knowledge? You get **one attempt per day**!")
+        # Clean start button - no extra text
+        st.subheader(f"📅 {current_date_str}")
 
-        col1, col2, col3 = st.columns([1, 2, 1])
-        with col2:
-            if st.button("🎮 Start Today's Challenge", type="primary", use_container_width=True):
-                start_daily_challenge()
-                st.rerun()
+        if st.button("🎮 Start Today's Challenge", type="primary", use_container_width=True, key="start_daily"):
+            start_daily_challenge()
+            st.rerun()
 
 # --- Practice Play Flow ---
 elif st.session_state.game_mode == "Practice Play":
     if not st.session_state.round_in_progress:
+        # Clean start button - no extra text
         st.subheader("🎯 Practice Mode")
-        st.markdown("Practice with unlimited random questions!")
 
-        col1, col2, col3 = st.columns([1, 2, 1])
-        with col2:
-            if st.button("🎮 Start New Practice Round", type="primary", use_container_width=True):
-                start_practice_round()
-                st.rerun()
+        if st.button("🎮 Start Practice Round", type="primary", use_container_width=True, key="start_practice"):
+            start_practice_round()
+            st.rerun()
 
 
 # --- Question Display (Active Round) ---
