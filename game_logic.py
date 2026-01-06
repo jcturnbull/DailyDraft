@@ -6,6 +6,7 @@ import random
 import pandas as pd
 from load_nfl_data import load_data_for_year
 from datetime import datetime, timezone
+import pytz
 
 # --- Constants ---
 POSITIONS_FOR_DRAFT = ["QB", "WR1", "WR2", "RB", "TE"]
@@ -30,15 +31,20 @@ EMOJI_THRESHOLDS = {
     0.0001: "🟨⬛⬛⬛⬛"
 }
 
+# Global cache for daily questions (shared across all users)
+_DAILY_QUESTIONS_CACHE = {}
+
 
 def get_daily_seed_and_date():
     """
-    Generates a seed based on the current UTC date.
+    Generates a seed based on the current Pacific Time date.
     Returns (seed_int, date_string) for consistent daily challenges.
+    Resets at midnight Pacific Time.
     """
-    now_utc = datetime.now(timezone.utc)
-    date_str = now_utc.strftime("%Y-%m-%d")
-    seed_str = now_utc.strftime("%Y%m%d")
+    pacific = pytz.timezone('America/Los_Angeles')
+    now_pt = datetime.now(pacific)
+    date_str = now_pt.strftime("%Y-%m-%d")
+    seed_str = now_pt.strftime("%Y%m%d")
     return int(seed_str), date_str
 
 
@@ -117,9 +123,18 @@ def generate_questions_for_round(data_cache, daily_mode=True, daily_seed=None):
     """
     Generates questions for a round.
     If daily_mode=True, uses daily_seed for deterministic questions.
+    Questions are cached globally for daily mode - generated once per day.
     Otherwise, generates random questions for practice.
     """
+    # Check cache for daily mode (shared across all users)
     if daily_mode and daily_seed is not None:
+        cache_key = f"daily_{daily_seed}"
+        if cache_key in _DAILY_QUESTIONS_CACHE:
+            print(f"Using cached daily questions for seed {daily_seed}")
+            return _DAILY_QUESTIONS_CACHE[cache_key]
+
+        # Not in cache - generate and cache it
+        print(f"Generating new daily questions for seed {daily_seed}")
         random.seed(daily_seed)
 
     questions = []
@@ -204,6 +219,12 @@ def generate_questions_for_round(data_cache, daily_mode=True, daily_seed=None):
             'correct_stat_value': leader_info.get('stat_value') if leader_info else None,
             'data_issue': False if leader_info else True
         })
+
+    # Cache the questions for daily mode
+    if daily_mode and daily_seed is not None:
+        cache_key = f"daily_{daily_seed}"
+        _DAILY_QUESTIONS_CACHE[cache_key] = questions
+        print(f"Cached daily questions for seed {daily_seed}")
 
     return questions
 

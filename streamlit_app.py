@@ -309,13 +309,14 @@ if st.session_state.game_mode == "Daily Challenge":
         st.success(f"✅ You've completed today's Daily Challenge! ({current_date_str})")
         st.info("Come back tomorrow for a new challenge!")
 
-        # Show time until next challenge
-        now_utc = datetime.now(timezone.utc)
-        next_midnight_utc = now_utc.replace(hour=0, minute=0, second=0, microsecond=0) + timedelta(days=1)
-        time_until_next = next_midnight_utc - now_utc
+        # Show time until next challenge (Pacific Time)
+        pacific = pytz.timezone('America/Los_Angeles')
+        now_pt = datetime.now(pacific)
+        next_midnight_pt = now_pt.replace(hour=0, minute=0, second=0, microsecond=0) + timedelta(days=1)
+        time_until_next = next_midnight_pt - now_pt
         hours, remainder = divmod(time_until_next.total_seconds(), 3600)
         minutes, _ = divmod(remainder, 60)
-        st.caption(f"⏰ Next challenge in: {int(hours):02d}h {int(minutes):02d}m")
+        st.caption(f"⏰ Next challenge in: {int(hours):02d}h {int(minutes):02d}m (Pacific Time)")
 
     elif not st.session_state.round_in_progress:
         # Clean start button - no extra text
