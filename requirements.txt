@@ -1,0 +1,4 @@
+streamlit==1.31.0
+pandas==2.1.4
+nfl-data-py==0.3.2
+pytz==2024.1
