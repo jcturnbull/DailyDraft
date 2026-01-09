@@ -6,6 +6,8 @@ import streamlit as st
 import pandas as pd
 from datetime import datetime, timezone, timedelta
 import pytz
+import uuid
+import hashlib
 
 from game_logic import (
     generate_questions_for_round,
@@ -19,6 +21,13 @@ from game_logic import (
     QUESTIONS_PER_ROUND
 )
 
+from storage import (
+    save_completed_game,
+    get_completed_game,
+    has_completed_today,
+    cleanup_old_games
+)
+
 # --- Page Configuration ---
 st.set_page_config(
     page_title="Daily Draft NFL Trivia",
@@ -26,6 +35,25 @@ st.set_page_config(
     layout="centered",  # Better for mobile
     initial_sidebar_state="collapsed"  # Sidebar hidden by default on mobile
 )
+
+# --- User Identification ---
+def get_or_create_user_id():
+    """Get or create a unique user ID that persists across sessions"""
+    # Check URL params first
+    query_params = st.query_params
+    user_id = query_params.get('user_id', None)
+
+    if user_id:
+        return user_id
+
+    # Generate new user ID
+    new_user_id = str(uuid.uuid4())[:8]  # Short ID
+
+    # Add to URL so it persists
+    st.query_params['user_id'] = new_user_id
+
+    return new_user_id
+
 
 # --- Session State Initialization ---
 def init_session_state():
@@ -37,6 +65,7 @@ def init_session_state():
         'user_guesses_ids': {},
         'user_guesses_names': {},
         'results': {},
+        'user_id': None,  # Will be set below
 
         # Daily Challenge specific
         'game_date_daily': None,
@@ -52,12 +81,28 @@ def init_session_state():
         'round_in_progress': False,
         'eligible_players_cache': [],
         'show_result_for_q_index': None,
-        'show_instructions': True,
+        'show_instructions': False,  # Don't show by default
     }
 
     for key, value in defaults.items():
         if key not in st.session_state:
             st.session_state[key] = value
+
+    # Get or create user ID
+    if not st.session_state.user_id:
+        st.session_state.user_id = get_or_create_user_id()
+
+    # Load saved game if exists
+    _, current_date_str = get_daily_seed_and_date()
+    saved_game = get_completed_game(current_date_str, st.session_state.user_id)
+
+    if saved_game and not st.session_state.game_completed_daily:
+        # Restore completed game
+        st.session_state.game_completed_daily = True
+        st.session_state.daily_total_score = saved_game['score']
+        st.session_state.daily_max_score = saved_game['max_score']
+        st.session_state.daily_results = saved_game['results']
+        st.session_state.game_date_daily = current_date_str
 
 
 def reset_round_state():
@@ -151,6 +196,19 @@ def complete_daily_challenge():
     st.session_state.daily_max_score = st.session_state.current_round_max_score
     st.session_state.daily_results = st.session_state.results.copy()
     st.session_state.round_in_progress = False
+
+    # Save to persistent storage
+    _, current_date_str = get_daily_seed_and_date()
+    save_completed_game(
+        current_date_str,
+        st.session_state.user_id,
+        st.session_state.daily_total_score,
+        st.session_state.daily_max_score,
+        st.session_state.daily_results
+    )
+
+    # Cleanup old games (keep last 7 days)
+    cleanup_old_games(days_to_keep=7)
 
 
 # --- Initialize ---
