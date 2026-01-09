@@ -31,19 +31,31 @@ def load_data_for_year(year: int):
     # --- Load and Prepare Roster Data ---
     try:
         temp_rosters_df = nfl.import_seasonal_rosters([year])
-        columns_to_keep = ['player_id', 'position', 'first_name', 'last_name', 'player_name']
+        columns_to_keep = ['player_id', 'position', 'first_name', 'last_name', 'player_name', 'team']
         existing_roster_cols = [col for col in columns_to_keep if col in temp_rosters_df.columns]
-        rosters_df = temp_rosters_df[existing_roster_cols].copy() # Use .copy()
+        temp_rosters_df = temp_rosters_df[existing_roster_cols].copy()
 
         game_positions_to_include = ['WR', 'TE', 'QB', 'RB']
-        if 'position' in rosters_df.columns:
-            rosters_df = rosters_df[rosters_df['position'].isin(game_positions_to_include)]
+        if 'position' in temp_rosters_df.columns:
+            temp_rosters_df = temp_rosters_df[temp_rosters_df['position'].isin(game_positions_to_include)]
 
-        rosters_df = rosters_df.dropna(subset=['first_name', 'last_name', 'player_name', 'player_id', 'position']).copy()
+        temp_rosters_df = temp_rosters_df.dropna(subset=['first_name', 'last_name', 'player_name', 'player_id', 'position']).copy()
 
-        # Remove duplicate players (players who played for multiple teams in same season)
-        # Keep first occurrence - stats are season totals anyway
-        rosters_df = rosters_df.drop_duplicates(subset=['player_id'], keep='first')
+        # Aggregate teams for players who played for multiple teams
+        # Group by player_id and aggregate teams in order
+        if 'team' in temp_rosters_df.columns:
+            agg_dict = {
+                'position': 'first',
+                'first_name': 'first',
+                'last_name': 'first',
+                'player_name': 'first',
+                'team': lambda x: ', '.join(x.dropna().unique())  # Join all teams
+            }
+            rosters_df = temp_rosters_df.groupby('player_id', as_index=False).agg(agg_dict)
+        else:
+            # No team column available, fallback
+            rosters_df = temp_rosters_df.drop_duplicates(subset=['player_id'], keep='first')
+
     except Exception as e:
         print(f"Error loading or processing rosters: {e}")
         rosters_df = pd.DataFrame() # Ensure it's an empty DataFrame on error

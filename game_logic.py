@@ -368,10 +368,38 @@ def get_eligible_players_for_autocomplete(position_label, year, data_cache):
     # Keep first occurrence, prioritizing by player_id
     active_players_df = active_players_df.drop_duplicates(subset=['player_id'], keep='first')
 
-    # Create sorted list of (player_name, player_id) tuples
-    active_players_df = active_players_df.sort_values(by='player_name')
+    # Format player names as "Last, First (TEAM)" and sort by last name
+    def format_player_name(row):
+        """Format name as 'Last, First (TEAM)'"""
+        first = row.get('first_name', '')
+        last = row.get('last_name', '')
+        team = row.get('team', '')
+
+        # Format name
+        if first and last:
+            name = f"{last}, {first}"
+        else:
+            # Fallback to player_name if first/last not available
+            name = row.get('player_name', 'Unknown')
+
+        # Add team in parentheses
+        if team:
+            name = f"{name} ({team})"
+
+        return name
+
+    # Add formatted name column for sorting and display
+    active_players_df['display_name'] = active_players_df.apply(format_player_name, axis=1)
+
+    # Sort by last name (or player_name if last_name not available)
+    if 'last_name' in active_players_df.columns:
+        active_players_df = active_players_df.sort_values(by='last_name')
+    else:
+        active_players_df = active_players_df.sort_values(by='player_name')
+
+    # Create list of (display_name, player_id) tuples
     eligible_players_list = [
-        (row['player_name'], row['player_id'])
+        (row['display_name'], row['player_id'])
         for _, row in active_players_df.iterrows()
     ]
 

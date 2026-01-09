@@ -72,8 +72,8 @@ def has_completed_today(date_str, user_id):
     return get_completed_game(date_str, user_id) is not None
 
 
-def cleanup_old_games(days_to_keep=7):
-    """Remove games older than X days to keep file size manageable"""
+def cleanup_old_games():
+    """Remove all games except today's to keep file minimal"""
     ensure_storage_dir()
 
     if not STORAGE_FILE.exists():
@@ -81,20 +81,12 @@ def cleanup_old_games(days_to_keep=7):
 
     completed_games = load_completed_games()
     pacific = pytz.timezone('America/Los_Angeles')
-    now = datetime.now(pacific)
+    today_str = datetime.now(pacific).strftime("%Y-%m-%d")
 
-    # Filter to keep only recent games
+    # Keep only today's games
     filtered = {}
-    for date_str, users in completed_games.items():
-        try:
-            game_date = datetime.strptime(date_str, "%Y-%m-%d")
-            days_old = (now - pacific.localize(game_date.replace(tzinfo=None))).days
-
-            if days_old <= days_to_keep:
-                filtered[date_str] = users
-        except:
-            # Keep if we can't parse date (safety)
-            filtered[date_str] = users
+    if today_str in completed_games:
+        filtered[today_str] = completed_games[today_str]
 
     try:
         with open(STORAGE_FILE, 'w') as f:

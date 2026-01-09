@@ -207,8 +207,8 @@ def complete_daily_challenge():
         st.session_state.daily_results
     )
 
-    # Cleanup old games (keep last 7 days)
-    cleanup_old_games(days_to_keep=7)
+    # Cleanup old games (keep only today)
+    cleanup_old_games()
 
 
 # --- Initialize ---
