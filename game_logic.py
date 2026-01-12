@@ -408,17 +408,21 @@ def get_eligible_players_for_autocomplete(position_label, year, data_cache):
     ]
 
 
-def format_share_text(results, questions, total_score, max_score, game_date):
+def format_share_text(results, questions, total_score, game_date, app_url=None):
     """
     Formats results in a shareable format (like Wordle).
     """
     lines = [f"Daily Draft NFL Trivia {game_date}"]
-    lines.append(f"Score: {total_score:,}/{max_score:,} ({int((total_score/max_score)*100)}%)")
+    lines.append(f"Score: {total_score:,}")
     lines.append("")
 
     for i, q_data in enumerate(questions):
         result = results.get(i)
         if result:
             lines.append(result.get('emojis', '⬛⬛⬛⬛⬛'))
+
+    if app_url:
+        lines.append("")
+        lines.append(app_url)
 
     return "\n".join(lines)

@@ -578,6 +578,28 @@ if not st.session_state.round_in_progress:
         st.header("🎉 Results")
         st.subheader(header_text)
 
+        # Share button at the top (Daily Challenge only)
+        if st.session_state.game_mode == "Daily Challenge":
+            # Get current app URL from query params
+            # Use the full current URL with user_id
+            base_url = "https://dailydraft.streamlit.app"  # Update this with your actual URL
+            app_url = f"{base_url}/?user_id={st.session_state.user_id}"
+
+            share_text = format_share_text(
+                results_to_show,
+                st.session_state.current_questions,
+                score_to_show,
+                st.session_state.game_date_daily,
+                app_url
+            )
+
+            # Share section with copy button
+            st.markdown("### 📤 Share Your Results")
+            st.code(share_text, language=None)
+            st.caption("👆 Click the copy icon in the top-right of the box above, then paste and share!")
+
+            st.markdown("---")
+
         # Score display
         col1, col2, col3 = st.columns(3)
         with col1:
@@ -623,23 +645,8 @@ if not st.session_state.round_in_progress:
                     st.markdown(f"{result.get('emojis', 'N/A')}")
                     st.markdown(f"**{result.get('points', 0):,} pts**")
 
-        # Share button (Daily Challenge only)
-        if st.session_state.game_mode == "Daily Challenge":
-            st.markdown("---")
-            share_text = format_share_text(
-                results_to_show,
-                st.session_state.current_questions,
-                score_to_show,
-                max_score_to_show,
-                st.session_state.game_date_daily
-            )
-
-            st.markdown("### 📤 Share Your Results")
-            st.code(share_text, language=None)
-            st.caption("Copy and share your results with friends!")
-
         # Play again button (Practice only)
-        elif st.session_state.game_mode == "Practice Play":
+        if st.session_state.game_mode == "Practice Play":
             st.markdown("---")
             if st.button("🔄 Play Another Practice Round", type="primary"):
                 st.session_state.current_questions = []
