@@ -32,7 +32,7 @@ def load_completed_games():
         return {}
 
 
-def save_completed_game(date_str, user_id, score, max_score, results):
+def save_completed_game(date_str, user_id, score, max_score, results, questions=None):
     """Save a completed game"""
     ensure_storage_dir()
 
@@ -46,6 +46,7 @@ def save_completed_game(date_str, user_id, score, max_score, results):
         'score': score,
         'max_score': max_score,
         'results': results,
+        'questions': questions,  # Save questions too for displaying results
         'completed_at': datetime.now(pytz.timezone('America/Los_Angeles')).isoformat()
     }
 

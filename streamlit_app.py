@@ -38,18 +38,53 @@ st.set_page_config(
 
 # --- User Identification ---
 def get_or_create_user_id():
-    """Get or create a unique user ID that persists across sessions"""
-    # Check URL params first
+    """Get or create a unique user ID that persists across sessions using localStorage"""
+
+    # Try to get from localStorage via JavaScript
+    get_storage_script = """
+    <script>
+    const userId = localStorage.getItem('dailydraft_user_id');
+    if (userId) {
+        // Send to Streamlit
+        const params = new URLSearchParams(window.location.search);
+        if (!params.has('user_id')) {
+            params.set('user_id', userId);
+            window.history.replaceState({}, '', `${window.location.pathname}?${params}`);
+        }
+    }
+    </script>
+    """
+    st.components.v1.html(get_storage_script, height=0)
+
+    # Check URL params (might be set by localStorage script)
     query_params = st.query_params
     user_id = query_params.get('user_id', None)
 
     if user_id:
+        # Save to localStorage for next time
+        save_storage_script = f"""
+        <script>
+        localStorage.setItem('dailydraft_user_id', '{user_id}');
+        </script>
+        """
+        st.components.v1.html(save_storage_script, height=0)
         return user_id
 
     # Generate new user ID
-    new_user_id = str(uuid.uuid4())[:8]  # Short ID
+    new_user_id = str(uuid.uuid4())[:8]
 
-    # Add to URL so it persists
+    # Save to localStorage
+    save_new_script = f"""
+    <script>
+    localStorage.setItem('dailydraft_user_id', '{new_user_id}');
+    const params = new URLSearchParams(window.location.search);
+    params.set('user_id', '{new_user_id}');
+    window.history.replaceState({{}}, '', `${{window.location.pathname}}?${{params}}`);
+    </script>
+    """
+    st.components.v1.html(save_new_script, height=0)
+
+    # Also add to URL
     st.query_params['user_id'] = new_user_id
 
     return new_user_id
@@ -102,6 +137,7 @@ def init_session_state():
         st.session_state.daily_total_score = saved_game['score']
         st.session_state.daily_max_score = saved_game['max_score']
         st.session_state.daily_results = saved_game['results']
+        st.session_state.current_questions = saved_game.get('questions', [])  # Restore questions
         st.session_state.game_date_daily = current_date_str
 
 
@@ -133,6 +169,20 @@ def check_and_update_daily_challenge():
     This is the single source of truth for daily challenge logic.
     """
     _, current_date_str = get_daily_seed_and_date()
+
+    # Check storage for completed game (in case session was lost)
+    if not st.session_state.game_completed_daily:
+        saved_game = get_completed_game(current_date_str, st.session_state.user_id)
+        if saved_game:
+            # Restore from storage
+            st.session_state.game_completed_daily = True
+            st.session_state.daily_total_score = saved_game['score']
+            st.session_state.daily_max_score = saved_game['max_score']
+            st.session_state.daily_results = saved_game['results']
+            st.session_state.current_questions = saved_game.get('questions', [])  # Restore questions
+            st.session_state.game_date_daily = current_date_str
+            st.session_state.round_in_progress = False
+            return False  # Game already completed today
 
     # New day detected - reset daily challenge
     if st.session_state.game_date_daily != current_date_str:
@@ -204,7 +254,8 @@ def complete_daily_challenge():
         st.session_state.user_id,
         st.session_state.daily_total_score,
         st.session_state.daily_max_score,
-        st.session_state.daily_results
+        st.session_state.daily_results,
+        st.session_state.current_questions  # Save questions too
     )
 
     # Cleanup old games (keep only today)
