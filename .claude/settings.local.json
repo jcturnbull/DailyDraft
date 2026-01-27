@@ -1,0 +1,16 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(dir:*)",
+      "WebSearch",
+      "WebFetch(domain:github.com)",
+      "WebFetch(domain:pypi.org)",
+      "WebFetch(domain:www.fangraphs.com)",
+      "Bash(pip install:*)",
+      "Bash(streamlit run:*)",
+      "Bash(python:*)",
+      "Bash(cd:*)",
+      "Bash(git add:*)"
+    ]
+  }
+}

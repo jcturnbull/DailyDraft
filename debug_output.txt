@@ -1,0 +1,17 @@
+=== Testing Team-to-League Mapping for 2005 ===
+Loading MLB data for year: 2005...
+Loaded 431 qualified batters for 2005
+Loaded 401 qualified pitchers for 2005
+MLB data loading for year 2005 complete.
+
+Batters total: 431
+League values: ['AL' 'NL' nan]
+AL batters: 182
+NL batters: 201
+UNMAPPED TEAMS: ['- - -' 'TBD']
+
+Pitchers total: 401
+League values: ['AL' 'NL' nan]
+AL pitchers: 174
+NL pitchers: 178
+UNMAPPED TEAMS: ['TBD' '- - -']

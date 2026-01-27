@@ -51,3 +51,4 @@ htmlcov/
 
 # User game data storage
 .streamlit_data/
+nul

@@ -1,38 +1,36 @@
 """
-Core game logic for Daily Draft NFL Trivia
-Handles question generation, scoring, and data management
+Core game logic dispatcher for Daily Draft
+Routes to sport-specific modules (NFL, MLB)
+Provides unified interfaces for the Streamlit app
 """
-import random
-import pandas as pd
-from load_nfl_data import load_data_for_year
-from datetime import datetime, timezone
+from datetime import datetime
 import pytz
 
-# --- Constants ---
-POSITIONS_FOR_DRAFT = ["QB", "WR1", "WR2", "RB", "TE"]
-STAT_CATEGORIES = {
-    "QB": ["passing_yards", "passing_tds", "completions", "attempts"],
-    "WR": ["receptions", "receiving_yards", "receiving_tds", "targets"],
-    "RB": ["rushing_yards", "rushing_tds", "carries", "receptions"],
-    "TE": ["receptions", "receiving_yards", "receiving_tds", "targets"]
-}
-MIN_YEAR = 1999
-MAX_YEAR = 2023
-MAX_POINTS_PER_QUESTION = 10000
-QUESTIONS_PER_ROUND = 5
+from config import (
+    MAX_POINTS_PER_QUESTION,
+    EMOJI_THRESHOLDS,
+    SPORTS
+)
 
-# Scoring thresholds (percentage to emoji mapping)
-EMOJI_THRESHOLDS = {
-    100: "🟩🟩🟩🟩🟩",
-    80: "🟩🟩🟩🟩🟨",
-    60: "🟩🟩🟩🟨⬛",
-    40: "🟩🟩🟨⬛⬛",
-    20: "🟩🟨⬛⬛⬛",
-    0.0001: "🟨⬛⬛⬛⬛"
-}
+# Import NFL-specific functions
+from game_logic_nfl import (
+    generate_nfl_questions_for_round,
+    get_nfl_player_stat_for_question,
+    get_nfl_eligible_players,
+    get_nfl_data_for_year_cached
+)
 
-# Global cache for daily questions (shared across all users)
-_DAILY_QUESTIONS_CACHE = {}
+# Import MLB-specific functions
+from game_logic_mlb import (
+    generate_mlb_questions_for_round,
+    get_mlb_player_stat_for_question,
+    get_mlb_eligible_players,
+    get_mlb_data_for_year_cached,
+    calculate_mlb_score
+)
+
+# Re-export constants for backward compatibility
+QUESTIONS_PER_ROUND = SPORTS['nfl']['questions_per_round']  # Default for compatibility
 
 
 def get_daily_seed_and_date():
@@ -48,216 +46,134 @@ def get_daily_seed_and_date():
     return int(seed_str), date_str
 
 
-def select_random_year_for_question(min_year=MIN_YEAR, max_year=MAX_YEAR, use_seed=True):
+def get_questions_per_round(sport):
+    """Get the number of questions per round for a sport"""
+    return SPORTS.get(sport, {}).get('questions_per_round', 5)
+
+
+def generate_questions_for_round(data_cache, sport="nfl", daily_mode=True, daily_seed=None):
     """
-    Selects a year for a question.
-    Adjusts max_year to be the last fully completed season.
+    Generate questions for a round, dispatching to the appropriate sport module.
+
+    Args:
+        data_cache: Dict for caching loaded data
+        sport: "nfl" or "mlb"
+        daily_mode: If True, use deterministic seed for daily challenge
+        daily_seed: Seed for deterministic generation
+
+    Returns:
+        List of question objects
     """
-    current_datetime = pd.Timestamp.now(timezone.utc)
-    # Before September, use previous year; otherwise current year
-    if current_datetime.month < 9:
-        actual_max_year = min(max_year, current_datetime.year - 1)
+    if sport == "nfl":
+        return generate_nfl_questions_for_round(data_cache, daily_mode, daily_seed)
+    elif sport == "mlb":
+        return generate_mlb_questions_for_round(data_cache, daily_mode, daily_seed)
     else:
-        actual_max_year = min(max_year, current_datetime.year)
-
-    if min_year > actual_max_year:
-        return actual_max_year
-
-    return random.randint(min_year, actual_max_year)
+        raise ValueError(f"Unknown sport: {sport}")
 
 
-def get_data_for_year_cached(year, data_cache):
+def get_player_stat_for_question(guessed_player_id, question_data, data_cache, sport="nfl"):
     """
-    Retrieves or loads NFL data for a given year using cache.
-    Returns tuple: (rosters_df, stats_with_position_df, seasonal_snap_counts_df, raw_snap_counts_df)
+    Retrieve stat value for a guessed player, dispatching to appropriate sport module.
+
+    Args:
+        guessed_player_id: Player ID that was guessed
+        question_data: Question dict containing year, stat_category, etc.
+        data_cache: Dict for caching loaded data
+        sport: "nfl" or "mlb"
+
+    Returns:
+        Numeric stat value
     """
-    if year not in data_cache:
-        try:
-            data_tuple = load_data_for_year(year)
-            # Validate data loaded successfully
-            if data_tuple[0].empty or data_tuple[1].empty:
-                data_cache[year] = (pd.DataFrame(), pd.DataFrame(), pd.DataFrame(), pd.DataFrame())
-            else:
-                data_cache[year] = data_tuple
-        except Exception as e:
-            print(f"Error loading data for year {year}: {e}")
-            data_cache[year] = (pd.DataFrame(), pd.DataFrame(), pd.DataFrame(), pd.DataFrame())
-
-    # Return cached data (might be empty if loading failed)
-    cached_data = data_cache[year]
-    if cached_data[0].empty or cached_data[1].empty:
-        return (pd.DataFrame(), pd.DataFrame(), pd.DataFrame(), pd.DataFrame())
-
-    return cached_data
+    if sport == "nfl":
+        return get_nfl_player_stat_for_question(guessed_player_id, question_data, data_cache)
+    elif sport == "mlb":
+        return get_mlb_player_stat_for_question(guessed_player_id, question_data, data_cache)
+    else:
+        raise ValueError(f"Unknown sport: {sport}")
 
 
-def get_stat_leader(stat_df, stat_column):
+def get_eligible_players_for_autocomplete(position, year, data_cache, sport="nfl"):
     """
-    Finds the player with the highest value for a given stat.
-    Returns dict with player_id and stat_value, or None if not found.
+    Get list of eligible players for autocomplete, dispatching to appropriate sport module.
+
+    Args:
+        position: Position label (e.g., "QB", "WR", "C", "SP")
+        year: Season year
+        data_cache: Dict for caching loaded data
+        sport: "nfl" or "mlb"
+
+    Returns:
+        List of (display_name, player_id) tuples
     """
-    if stat_df.empty or stat_column not in stat_df.columns or 'player_id' not in stat_df.columns:
-        return None
-
-    try:
-        df_copy = stat_df.copy()
-        df_copy[stat_column] = pd.to_numeric(df_copy[stat_column], errors='coerce')
-        df_copy = df_copy.dropna(subset=[stat_column])
-
-        if df_copy.empty:
-            return None
-
-        leader_idx = df_copy[stat_column].idxmax()
-        leader = df_copy.loc[leader_idx]
-
-        return {
-            'player_id': leader['player_id'],
-            'stat_value': leader[stat_column]
-        }
-    except Exception as e:
-        print(f"Error finding stat leader for {stat_column}: {e}")
-        return None
+    if sport == "nfl":
+        return get_nfl_eligible_players(position, year, data_cache)
+    elif sport == "mlb":
+        return get_mlb_eligible_players(position, year, data_cache)
+    else:
+        raise ValueError(f"Unknown sport: {sport}")
 
 
-def generate_questions_for_round(data_cache, daily_mode=True, daily_seed=None):
+def get_data_for_year_cached(year, data_cache, sport="nfl"):
     """
-    Generates questions for a round.
-    If daily_mode=True, uses daily_seed for deterministic questions.
-    Questions are cached globally for daily mode - generated once per day.
-    Otherwise, generates random questions for practice.
+    Get cached data for a year, dispatching to appropriate sport module.
+
+    Args:
+        year: Season year
+        data_cache: Dict for caching loaded data
+        sport: "nfl" or "mlb"
+
+    Returns:
+        Sport-specific data tuple
     """
-    # Check cache for daily mode (shared across all users)
-    if daily_mode and daily_seed is not None:
-        cache_key = f"daily_{daily_seed}"
-        if cache_key in _DAILY_QUESTIONS_CACHE:
-            print(f"Using cached daily questions for seed {daily_seed}")
-            return _DAILY_QUESTIONS_CACHE[cache_key]
-
-        # Not in cache - generate and cache it
-        print(f"Generating new daily questions for seed {daily_seed}")
-        random.seed(daily_seed)
-
-    questions = []
-    used_wr_year_stats = set()  # Ensures WR questions are unique
-
-    for slot in POSITIONS_FOR_DRAFT:
-        question_year = select_random_year_for_question(use_seed=daily_mode)
-
-        # Load data for this question's year
-        rosters_df, stats_with_position_df, _, _ = get_data_for_year_cached(question_year, data_cache)
-
-        # Check for data issues
-        if stats_with_position_df.empty or 'position' not in stats_with_position_df.columns:
-            questions.append({
-                'position_slot': slot,
-                'question_text': f"Data unavailable for {slot} (Year: {question_year}).",
-                'stat_category': None,
-                'year': question_year,
-                'correct_player_id': None,
-                'correct_player_name': None,
-                'correct_stat_value': None,
-                'data_issue': True
-            })
-            continue
-
-        # Determine position and possible stats
-        actual_position = slot.rstrip('12')  # WR1 -> WR, WR2 -> WR
-        possible_stats = STAT_CATEGORIES.get(actual_position, [])
-
-        if not possible_stats:
-            continue
-
-        # Select stat (ensure uniqueness for WRs)
-        selected_stat = None
-        attempts = 0
-        max_attempts = len(possible_stats) * 3
-
-        if actual_position == "WR":
-            # Ensure unique (year, stat) combinations for WR positions
-            while attempts < max_attempts:
-                stat_candidate = random.choice(possible_stats)
-                if (question_year, stat_candidate) not in used_wr_year_stats:
-                    selected_stat = stat_candidate
-                    used_wr_year_stats.add((question_year, selected_stat))
-                    break
-                attempts += 1
-
-            if selected_stat is None:
-                selected_stat = random.choice(possible_stats)
-        else:
-            selected_stat = random.choice(possible_stats)
-
-        # Generate question text
-        question_text = f"Who had the most {selected_stat.replace('_', ' ')} in {question_year} for {actual_position}s?"
-
-        # Find the stat leader
-        position_filter_map = {'QB': 'QB', 'RB': 'RB', 'WR': 'WR', 'TE': 'TE'}
-        target_pos = position_filter_map.get(actual_position)
-        leader_info = None
-
-        if target_pos and not stats_with_position_df.empty:
-            relevant_stats = stats_with_position_df[stats_with_position_df['position'] == target_pos]
-            if not relevant_stats.empty:
-                leader_info = get_stat_leader(relevant_stats, selected_stat)
-
-        # Get player name from roster
-        player_name = "Unknown"
-        if leader_info and not rosters_df.empty:
-            if 'player_id' in rosters_df.columns and 'player_name' in rosters_df.columns:
-                player_record = rosters_df[rosters_df['player_id'] == leader_info['player_id']]
-                if not player_record.empty:
-                    player_name = player_record.iloc[0]['player_name']
-
-        # Create question object
-        questions.append({
-            'position_slot': slot,
-            'question_text': question_text,
-            'stat_category': selected_stat,
-            'year': question_year,
-            'correct_player_id': leader_info.get('player_id') if leader_info else None,
-            'correct_player_name': player_name if leader_info else "N/A",
-            'correct_stat_value': leader_info.get('stat_value') if leader_info else None,
-            'data_issue': False if leader_info else True
-        })
-
-    # Cache the questions for daily mode
-    if daily_mode and daily_seed is not None:
-        cache_key = f"daily_{daily_seed}"
-        _DAILY_QUESTIONS_CACHE[cache_key] = questions
-        print(f"Cached daily questions for seed {daily_seed}")
-
-    return questions
+    if sport == "nfl":
+        return get_nfl_data_for_year_cached(year, data_cache)
+    elif sport == "mlb":
+        return get_mlb_data_for_year_cached(year, data_cache)
+    else:
+        raise ValueError(f"Unknown sport: {sport}")
 
 
-def calculate_score_emojis_and_points(guessed_player_stat_input, correct_leader_stat_input):
+def calculate_score_emojis_and_points(guessed_stat, correct_stat, is_inverted=False, worst_stat=None):
     """
     Calculates score based on how close the guess is to the correct answer.
-    Returns (emoji_string, points_earned)
+    Supports inverted scoring for stats like ERA where lower is better.
+
+    Args:
+        guessed_stat: The guessed player's stat value
+        correct_stat: The correct (leader's) stat value
+        is_inverted: If True, use inverted scoring (lower is better)
+        worst_stat: For inverted stats, the worst value among qualified players
+
+    Returns:
+        (emoji_string, points_earned)
     """
-    # Parse inputs to float
-    try:
-        guessed_stat = float(guessed_player_stat_input) if guessed_player_stat_input is not None else 0.0
-    except:
-        guessed_stat = 0.0
-
-    try:
-        correct_stat = float(correct_leader_stat_input) if correct_leader_stat_input is not None else 0.0
-    except:
-        # If correct stat is invalid, award full points if guess is also 0
-        return ("⬛⬛⬛⬛⬛", 0) if guessed_stat != 0 else ("🟩🟩🟩🟩🟩", MAX_POINTS_PER_QUESTION)
-
-    # Calculate percentage
-    percentage = 0.0
-    points = 0
-
-    if correct_stat == 0:
-        if guessed_stat == 0:
-            percentage = 100.0
-            points = MAX_POINTS_PER_QUESTION
+    # For inverted stats, use MLB scoring logic
+    if is_inverted and worst_stat is not None:
+        percentage, points = calculate_mlb_score(guessed_stat, correct_stat, is_inverted, worst_stat)
     else:
-        raw_percentage = (guessed_stat / correct_stat) * 100.0
-        percentage = min(max(0.0, raw_percentage), 100.0)
-        points = round(percentage * (MAX_POINTS_PER_QUESTION / 100.0))
+        # Standard scoring logic
+        try:
+            guessed = float(guessed_stat) if guessed_stat is not None else 0.0
+        except:
+            guessed = 0.0
+
+        try:
+            correct = float(correct_stat) if correct_stat is not None else 0.0
+        except:
+            return ("⬛⬛⬛⬛⬛", 0) if guessed != 0 else ("🟩🟩🟩🟩🟩", MAX_POINTS_PER_QUESTION)
+
+        if correct == 0:
+            if guessed == 0:
+                percentage = 100.0
+                points = MAX_POINTS_PER_QUESTION
+            else:
+                percentage = 0.0
+                points = 0
+        else:
+            raw_percentage = (guessed / correct) * 100.0
+            percentage = min(max(0.0, raw_percentage), 100.0)
+            points = round(percentage * (MAX_POINTS_PER_QUESTION / 100.0))
 
     # Determine emoji based on percentage
     emojis = "⬛⬛⬛⬛⬛"
@@ -267,152 +183,32 @@ def calculate_score_emojis_and_points(guessed_player_stat_input, correct_leader_
             break
 
     # Handle edge case: 0 guess when answer is non-zero
-    if percentage == 0 and guessed_stat == 0 and correct_stat != 0:
+    if percentage == 0:
         emojis = "⬛⬛⬛⬛⬛"
 
     return emojis, int(points)
 
 
-def get_player_stat_for_question(guessed_player_id, question_data, data_cache):
-    """
-    Retrieves the stat value for a guessed player for a specific question.
-    """
-    question_year = question_data['year']
-    stat_category = question_data['stat_category']
-
-    _, stats_with_position_df, _, _ = get_data_for_year_cached(question_year, data_cache)
-
-    if stats_with_position_df.empty or 'player_id' not in stats_with_position_df.columns:
-        return 0
-
-    player_stat_row = stats_with_position_df[stats_with_position_df['player_id'] == guessed_player_id]
-
-    if not player_stat_row.empty and stat_category in player_stat_row.columns:
-        stat_value = player_stat_row.iloc[0][stat_category]
-        try:
-            return pd.to_numeric(stat_value)
-        except:
-            return 0
-
-    return 0
-
-
-def get_eligible_players_for_autocomplete(position_label, year, data_cache):
-    """
-    Gets list of eligible players for a given position and year.
-    Players must have played snaps or had relevant stats.
-    Returns list of tuples: [(player_name, player_id), ...]
-    """
-    rosters_df, stats_with_position_df, seasonal_snap_counts_df, _ = get_data_for_year_cached(year, data_cache)
-
-    # Validate data availability
-    if rosters_df.empty or 'player_id' not in rosters_df.columns:
-        return [("No roster data available", None)]
-
-    if 'position' not in rosters_df.columns or 'player_name' not in rosters_df.columns:
-        return [("Incomplete roster data", None)]
-
-    # Filter roster by position
-    position_roster = rosters_df[rosters_df['position'] == position_label].copy()
-
-    if position_roster.empty:
-        return [(f"No {position_label}s found in roster for {year}", None)]
-
-    # Merge with stats
-    if not stats_with_position_df.empty and 'player_id' in stats_with_position_df.columns:
-        position_roster = pd.merge(
-            position_roster,
-            stats_with_position_df,
-            on='player_id',
-            how='left',
-            suffixes=('', '_stats')
-        )
-
-    # Merge with snap counts
-    if not seasonal_snap_counts_df.empty and 'player_id' in seasonal_snap_counts_df.columns:
-        seasonal_snap_counts_df['player_id'] = seasonal_snap_counts_df['player_id'].astype(str)
-        position_roster['player_id'] = position_roster['player_id'].astype(str)
-        position_roster = pd.merge(
-            position_roster,
-            seasonal_snap_counts_df[['player_id', 'offense_snaps']],
-            on='player_id',
-            how='left'
-        )
-        position_roster['offense_snaps'] = position_roster['offense_snaps'].fillna(0)
-    else:
-        position_roster['offense_snaps'] = 0
-
-    # Apply position-specific eligibility criteria
-    if position_label in ['WR', 'TE']:
-        position_roster['targets'] = position_roster.get('targets', pd.Series(0)).fillna(0)
-        active_players_df = position_roster[
-            (position_roster['targets'] > 0) | (position_roster['offense_snaps'] > 0)
-        ]
-    elif position_label == 'RB':
-        position_roster['carries'] = position_roster.get('carries', pd.Series(0)).fillna(0)
-        active_players_df = position_roster[
-            (position_roster['carries'] > 0) | (position_roster['offense_snaps'] > 0)
-        ]
-    elif position_label == 'QB':
-        position_roster['attempts'] = position_roster.get('attempts', pd.Series(0)).fillna(0)
-        active_players_df = position_roster[
-            (position_roster['attempts'] > 0) | (position_roster['offense_snaps'] > 0)
-        ]
-    else:
-        active_players_df = position_roster
-
-    if active_players_df.empty:
-        return [(f"No active {position_label}s found for {year}", None)]
-
-    # Remove duplicates (players may have multiple rows from merges)
-    # Keep first occurrence, prioritizing by player_id
-    active_players_df = active_players_df.drop_duplicates(subset=['player_id'], keep='first')
-
-    # Format player names as "Last, First (TEAM)" and sort by last name
-    def format_player_name(row):
-        """Format name as 'Last, First (TEAM)'"""
-        first = row.get('first_name', '')
-        last = row.get('last_name', '')
-        team = row.get('team', '')
-
-        # Format name
-        if first and last:
-            name = f"{last}, {first}"
-        else:
-            # Fallback to player_name if first/last not available
-            name = row.get('player_name', 'Unknown')
-
-        # Add team in parentheses
-        if team:
-            name = f"{name} ({team})"
-
-        return name
-
-    # Add formatted name column for sorting and display
-    active_players_df['display_name'] = active_players_df.apply(format_player_name, axis=1)
-
-    # Sort by last name (or player_name if last_name not available)
-    if 'last_name' in active_players_df.columns:
-        active_players_df = active_players_df.sort_values(by='last_name')
-    else:
-        active_players_df = active_players_df.sort_values(by='player_name')
-
-    # Create list of (display_name, player_id) tuples
-    eligible_players_list = [
-        (row['display_name'], row['player_id'])
-        for _, row in active_players_df.iterrows()
-    ]
-
-    return eligible_players_list if eligible_players_list else [
-        (f"No eligible {position_label}s after filtering for {year}", None)
-    ]
-
-
-def format_share_text(results, questions, total_score, game_date, app_url=None):
+def format_share_text(results, questions, total_score, game_date, sport="nfl", app_url=None):
     """
     Formats results in a shareable format (like Wordle).
+
+    Args:
+        results: Dict of question results
+        questions: List of question data
+        total_score: Total points scored
+        game_date: Date string for the game
+        sport: "nfl" or "mlb"
+        app_url: Optional URL to include
+
+    Returns:
+        Formatted share text string
     """
-    lines = [f"Daily Draft NFL Trivia {game_date}"]
+    sport_config = SPORTS.get(sport, SPORTS['nfl'])
+    sport_name = sport_config['name']
+    sport_icon = sport_config['icon']
+
+    lines = [f"Daily Draft {sport_icon} {sport_name} Trivia {game_date}"]
     lines.append(f"Score: {total_score:,}")
     lines.append("")
 
@@ -420,6 +216,54 @@ def format_share_text(results, questions, total_score, game_date, app_url=None):
         result = results.get(i)
         if result:
             lines.append(result.get('emojis', '⬛⬛⬛⬛⬛'))
+
+    if app_url:
+        lines.append("")
+        lines.append(app_url)
+
+    return "\n".join(lines)
+
+
+def format_combined_share_text(all_results, game_date, app_url=None):
+    """
+    Format combined results from multiple sports for sharing.
+
+    Args:
+        all_results: Dict with sport keys containing {score, results, questions}
+        game_date: Date string for the game
+        app_url: Optional URL to include
+
+    Returns:
+        Formatted share text string
+    """
+    lines = [f"Daily Draft {game_date}"]
+    lines.append("")
+
+    total_combined = 0
+
+    for sport in ['nfl', 'mlb']:
+        if sport in all_results:
+            sport_data = all_results[sport]
+            sport_config = SPORTS.get(sport)
+            icon = sport_config['icon']
+            name = sport_config['name']
+
+            score = sport_data.get('score', 0)
+            total_combined += score
+
+            lines.append(f"{icon} {name}: {score:,}")
+
+            results = sport_data.get('results', {})
+            questions = sport_data.get('questions', [])
+
+            for i in range(len(questions)):
+                result = results.get(i) or results.get(str(i))
+                if result:
+                    lines.append(result.get('emojis', '⬛⬛⬛⬛⬛'))
+
+            lines.append("")
+
+    lines.append(f"Total: {total_combined:,}")
 
     if app_url:
         lines.append("")
