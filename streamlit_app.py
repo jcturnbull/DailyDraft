@@ -26,7 +26,8 @@ from storage import (
     get_completed_game,
     get_all_completed_games,
     has_completed_today,
-    cleanup_old_games
+    cleanup_old_games,
+    load_games_from_local_storage
 )
 
 # --- Page Configuration ---
@@ -122,8 +123,9 @@ def init_session_state():
     if not st.session_state.user_id:
         st.session_state.user_id = get_or_create_user_id()
 
-    # Load saved games for all sports
+    # Load saved games from browser localStorage
     _, current_date_str = get_daily_seed_and_date()
+    load_games_from_local_storage(current_date_str, st.session_state.user_id, list(SPORTS.keys()))
 
     for sport in SPORTS.keys():
         if sport not in st.session_state.game_completed:
