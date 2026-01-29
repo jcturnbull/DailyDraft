@@ -132,7 +132,8 @@ def _generate_batter_question(slot, league, year, batters_df, used_stats):
     if is_inverted:
         question_text = f"Which {league_name} batter had the lowest {stat_display} in {year}?"
     else:
-        question_text = f"Which {league_name} batter had the most {stat_display} in {year}?"
+        verb = _question_verb(selected_stat)
+        question_text = f"Which {league_name} batter had the {verb} {stat_display} in {year}?"
 
     # Find the stat leader
     leader_info = get_stat_leader_mlb(league_df, selected_stat, inverted=is_inverted)
@@ -184,7 +185,8 @@ def _generate_pitcher_question(slot, league, year, pitchers_df, used_stats):
     if is_inverted:
         question_text = f"Which {league_name} pitcher had the lowest {stat_display} in {year}?"
     else:
-        question_text = f"Which {league_name} pitcher had the most {stat_display} in {year}?"
+        verb = _question_verb(selected_stat)
+        question_text = f"Which {league_name} pitcher had the {verb} {stat_display} in {year}?"
 
     # Find the stat leader
     leader_info = get_stat_leader_mlb(league_df, selected_stat, inverted=is_inverted)
@@ -244,6 +246,17 @@ def _format_stat_name(stat):
         'WHIP': 'WHIP'
     }
     return stat_names.get(stat, stat)
+
+
+# Rate stats use "highest", counting stats use "most"
+HIGHEST_STATS = {"AVG", "OPS", "SLG"}
+
+
+def _question_verb(stat):
+    """Return 'highest' for rate stats, 'most' for counting stats."""
+    if stat in HIGHEST_STATS:
+        return "highest"
+    return "most"
 
 
 def calculate_mlb_score(guessed_stat, correct_stat, is_inverted=False, worst_stat=None):
