@@ -10,7 +10,9 @@
       "Bash(streamlit run:*)",
       "Bash(python:*)",
       "Bash(cd:*)",
-      "Bash(git add:*)"
+      "Bash(git add:*)",
+      "Bash(powershell -Command \"cd ''C:\\\\Users\\\\epicx\\\\Projects\\\\DailyDraft\\\\claudecode''; git status\")",
+      "Bash(git --version:*)"
     ]
   }
 }
